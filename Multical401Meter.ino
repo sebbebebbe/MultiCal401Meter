@@ -165,7 +165,7 @@ void loop () {
           Serial.print(m_flow);
           Serial.println("");
 
-          StaticJsonBuffer<257> jsonBuffer;
+          StaticJsonBuffer<400> jsonBuffer;
           JsonObject& root = jsonBuffer.createObject();
           root["energy"] = m_energy;
           root["volume"] = m_volume;
@@ -175,6 +175,8 @@ void loop () {
           root["tempdiff"] = m_tempdiff;
           root["power"] = m_power;
           root["flow"] = m_flow;
+          long checksum = m_energy + m_volume + m_hours + m_tempin + m_tempout + m_tempdiff + m_power + m_flow;          
+          root["checksum"] = checksum;
           
           root.prettyPrintTo(Serial);
           root.printTo(esp8266Ser);

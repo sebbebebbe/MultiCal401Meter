@@ -1,6 +1,6 @@
 #define MY_DEBUG 
 #define MY_ESP8266_HOSTNAME "Multical401Meter"
-#define wifi_ssid ""
+#define wifi_ssid "Sensors"
 #define wifi_password ""
 
 #define mqtt_server "192.168.88.99"
@@ -29,6 +29,7 @@
 
 SoftwareSerial arduinoSer(D4, D5, false); //Initialize serial for ESP communication RX D4 TX D5
 String inData;
+long lastSuccessfulChecksum;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -76,12 +77,13 @@ void reconnect() {
 void setup()
 {
   Serial.begin(57600);       
-  arduinoSer.begin(9600);
-  Serial.println("SETUP OK!");
-
   setup_wifi();
   client.setServer(mqtt_server, 1883);
-
+  pinMode(D4,INPUT);
+  
+  arduinoSer.begin(9600);
+  lastSuccessfulChecksum = 0;
+  Serial.println("SETUP OK!");
 }
 
 void loop()
@@ -90,20 +92,20 @@ if (!client.connected()) {
     reconnect();
   }
   client.loop();
-
   
   while (arduinoSer.available() > 0)
     {
         char recieved = arduinoSer.read();
+        //Serial.print(recieved);
         if (recieved != '\n')
         {
-          inData += recieved; 
+          inData += recieved;
         }
 
         // Process message when new line character is recieved
         if (recieved == '\n')
         {
-          StaticJsonBuffer<315> jsonBuffer;
+          StaticJsonBuffer<400> jsonBuffer;
           Serial.println(inData);
           JsonObject& root = jsonBuffer.parseObject(inData);
           
@@ -117,42 +119,76 @@ if (!client.connected()) {
           const char* energyResult = root["energy"];
           Serial.print("energy:");
           Serial.println(energyResult);
-          client.publish(energy_topic, String(energyResult).c_str(), true);
+         
 
           const char* volumeResult = root["volume"];
           Serial.print("volume:");
           Serial.println(volumeResult);
-          client.publish(volume_topic, String(volumeResult).c_str(), true);
+           
 
           const char* hoursResult = root["hours"];
           Serial.print("hours:");
           Serial.println(hoursResult);
-          client.publish(hours_topic, String(hoursResult).c_str(), true);
+          
 
           const char* tempinResult = root["tempin"];
           Serial.print("tempin;");
           Serial.println(tempinResult);
-          client.publish(tempin_topic, String(tempinResult).c_str(), true);
+         
 
           const char* tempoutResult = root["tempout"];
           Serial.print("tempout:");
           Serial.println(tempoutResult);
-          client.publish(tempout_topic, String(tempoutResult).c_str(), true);
+         
 
           const char* tempdiffResult = root["tempdiff"];
           Serial.print("tempdiff:");
           Serial.println(tempdiffResult);
-          client.publish(tempdiff_topic, String(tempdiffResult).c_str(), true);
+        
 
           const char* powerResult = root["power"];
           Serial.print("power:");
           Serial.println(powerResult);
-          client.publish(power_topic, String(powerResult).c_str(), true);
+      
 
           const char* flowResult = root["flow"];
           Serial.print("flow:");
           Serial.println(flowResult);
+
+          const char* checksumResult = root["checksum"];
+          Serial.print("checksum:");
+          Serial.println(checksumResult);
+          
+          long checksum = String(energyResult).toFloat() + String(volumeResult).toFloat() + atol(hoursResult) + String(tempinResult).toFloat() + String(tempoutResult).toFloat() + String(tempdiffResult).toFloat() + String(powerResult).toFloat() + atol(flowResult);
+          Serial.print("calculatedChecksum: ");
+          Serial.println(checksum);
+
+          long checksumDiff = (checksum - atol(checksumResult));
+          Serial.print("checksumDiff: ");
+          Serial.println(checksumDiff);
+          
+          if(checksum == atol(checksumResult) && checksumDiff < 2000 && atol(tempdiffResult) < 100)
+          {
+          
+          lastSuccessfulChecksum = checksum;
+          Serial.println("Checksum OK! Sending over MQTT.");
+          client.publish(energy_topic, String(energyResult).c_str(), true);
+          client.publish("HeaterMeter/energy",String(energyResult).c_str(), true);
+          client.publish(volume_topic, String(volumeResult).c_str(), true);
+          client.publish("HeaterMeter/volume", String(volumeResult).c_str(), true);
+          client.publish(hours_topic, String(hoursResult).c_str(), true);
+          client.publish("HeaterMeter/hours", String(hoursResult).c_str(), true);
+          client.publish(tempin_topic, String(tempinResult).c_str(), true);
+          client.publish("HeaterMeter/tempin", String(tempinResult).c_str(), true);
+          client.publish(tempout_topic, String(tempoutResult).c_str(), true);
+          client.publish("HeaterMeter/tempout", String(tempoutResult).c_str(), true);
+          client.publish(tempdiff_topic, String(tempdiffResult).c_str(), true);
+          client.publish("HeaterMeter/tempdiff", String(tempdiffResult).c_str(), true);
+          client.publish(power_topic, String(powerResult).c_str(), true);
+          client.publish("HeaterMeter/power", String(powerResult).c_str(), true);
           client.publish(flow_topic, String(flowResult).c_str(), true);
+          client.publish("HeaterMeter/flow", String(flowResult).c_str(), true);
+          }
           
         }
     }
